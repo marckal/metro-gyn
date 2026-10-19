@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Metrô Goiânia · Mapa ao vivo (projeto especulativo)</title>
+<meta name="description" content="Projeto de design especulativo: simulação de um mapa em tempo real para o Metrô Goiânia imaginado por Marck Al (Neuralbrand, 2017).">
+<style>
+:root{
+  color-scheme: light;
+  --bg:#FFFFFF; --map-bg:#FFFFFF; --panel:#FFFFFF; --panel-2:#F4F4F4;
+  --ink:#000000; --ink-2:#4A4A4A; --ink-3:#8A8A8A; --rule:#DDDDDD; --grid:#D8E9F4; --water:#E3EEF7; --park:#DCE6C6; --box:#ECECEC; --marker:#FFFFFF;
+  --NS:#F7A823; --EX:#F15A24; --AE:#29ABE2; --AN:#13A89E; --CI:#006837; --TR:#1A1A1A; --PT:#C8102E;
+  --ok:#006837; --warn:#C8102E;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#111111; --map-bg:#141414; --panel:#111111; --panel-2:#1E1E1E;
+    --ink:#FFFFFF; --ink-2:#C9C9C9; --ink-3:#8A8A8A; --rule:#2E2E2E; --grid:#1F2A33; --water:#1A2731; --park:#243224; --box:#242424; --marker:#141414;
+    --CI:#1E9B58; --TR:#F2F2F2; --ok:#4CC07E;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#111111; --map-bg:#141414; --panel:#111111; --panel-2:#1E1E1E;
+  --ink:#FFFFFF; --ink-2:#C9C9C9; --ink-3:#8A8A8A; --rule:#2E2E2E; --grid:#1F2A33; --water:#1A2731; --park:#243224; --box:#242424; --marker:#141414;
+  --CI:#1E9B58; --TR:#F2F2F2; --ok:#4CC07E;
+}
+html{ scroll-padding-top:env(safe-area-inset-top,0px); height:100%; }
+*,*::before,*::after{ box-sizing:inherit; }
+body{
+  margin:0; height:100%; background:var(--bg); color:var(--ink);
+  font-family:"Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif; font-size:14px; line-height:1.4;
+  display:flex; flex-direction:column; overflow:hidden; -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{ margin:0; font-weight:700; letter-spacing:-.01em; }
+button,select{ font:inherit; color:inherit; }
+a{ color:inherit; }
+:focus-visible{ outline:2px solid var(--AE); outline-offset:2px; }
+
+/* ---------- aviso ---------- */
+.notice{
+  background:var(--ink); color:var(--bg); padding:8px 20px; font-size:12.5px; display:flex; gap:16px; align-items:center;
+}
+.notice b{ font-weight:700; }
+.notice span{ opacity:.8; }
+.notice button{ margin-left:auto; background:none; border:1px solid currentColor; color:inherit; padding:4px 10px; cursor:pointer; font-size:12px; border-radius:2px; }
+
+/* ---------- layout ---------- */
+.app{ flex:1; min-height:0; display:grid; grid-template-columns:336px 1fr; }
+aside{ background:var(--panel); border-right:1px solid var(--rule); display:flex; flex-direction:column; min-height:0; }
+.brand{ padding:22px 24px 16px; border-bottom:4px solid var(--ink); }
+.brand .logo{ display:block; width:150px; height:auto; margin-bottom:14px; }
+.brand h1{ font-size:30px; line-height:1; letter-spacing:-.03em; }
+.brand h1 small{ display:block; font-size:12px; font-weight:400; letter-spacing:0; color:var(--ink-3); margin-top:8px; }
+.live{ display:flex; align-items:baseline; gap:10px; margin-top:16px; }
+.live .clock{ font-size:32px; font-weight:700; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums; }
+.live .dot{ width:8px; height:8px; border-radius:50%; background:var(--warn); align-self:center; animation:pulse 1.6s ease-in-out infinite; }
+.live .lbl{ font-size:12px; color:var(--ink-3); }
+@keyframes pulse{ 0%,100%{ opacity:1;} 50%{ opacity:.25;} }
+.stats{ display:grid; grid-template-columns:repeat(3,1fr); margin-top:14px; border-top:1px solid var(--rule); }
+.stat{ padding:10px 0 0; }
+.stat + .stat{ padding-left:12px; border-left:1px solid var(--rule); margin-left:12px; }
+.stat b{ display:block; font-size:18px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.stat span{ color:var(--ink-3); font-size:11px; }
+
+.scroll{ flex:1; min-height:0; overflow:auto; }
+.section{ padding:16px 24px; border-bottom:1px solid var(--rule); }
+.section h2{ font-size:12px; text-transform:none; color:var(--ink-3); font-weight:400; margin-bottom:10px; display:flex; justify-content:space-between; }
+.section h2 button{ background:none; border:0; padding:0; color:var(--ink-3); cursor:pointer; font-size:12px; text-decoration:underline; }
+
+.lines{ list-style:none; margin:0; padding:0; }
+.line-row{ display:grid; grid-template-columns:64px 1fr auto; gap:12px; align-items:center; width:100%; padding:7px 0; background:none; border:0; border-top:1px solid var(--rule); text-align:left; cursor:pointer; }
+.lines li:first-child .line-row{ border-top:0; }
+.line-row.hidden-line{ opacity:.35; }
+.line-row.active .name{ text-decoration:underline; text-underline-offset:3px; }
+.bar{ height:14px; border-radius:7px; background:var(--c); position:relative; }
+.bar::before,.bar::after{ content:""; position:absolute; top:3px; width:8px; height:8px; border-radius:50%; background:var(--panel); }
+.bar::before{ left:3px; } .bar::after{ right:3px; }
+.bar.dash{ background:repeating-linear-gradient(90deg,var(--TR) 0 10px,transparent 10px 15px); border-radius:0; }
+.bar.dash::before,.bar.dash::after{ display:none; }
+.line-row .name{ font-weight:700; font-size:14px; }
+.line-row .name small{ display:block; font-weight:400; color:var(--ink-3); font-size:11.5px; }
+.status{ font-size:11.5px; color:var(--ink-2); white-space:nowrap; display:flex; align-items:center; gap:6px; }
+.status::before{ content:""; width:7px; height:7px; border-radius:50%; background:var(--ok); }
+.status.warn::before{ background:var(--warn); }
+
+.alerts{ list-style:none; margin:0; padding:0; }
+.alert{ display:grid; grid-template-columns:4px 1fr; gap:12px; padding:8px 0; border-top:1px solid var(--rule); font-size:12.5px; }
+.alerts li:first-child .alert{ border-top:0; }
+.alert i{ display:block; background:var(--c); border-radius:2px; }
+.alert time{ display:block; color:var(--ink-3); font-size:11px; margin-top:3px; }
+
+.route form{ display:flex; flex-direction:column; gap:8px; }
+.route label{ display:block; font-size:11px; color:var(--ink-3); margin-bottom:3px; }
+.route select{ width:100%; padding:7px 8px; border:1px solid var(--ink); border-radius:0; background:var(--panel); color:var(--ink); }
+.route .row{ display:flex; gap:8px; }
+.btn{ border:1px solid var(--ink); background:var(--panel); padding:7px 12px; cursor:pointer; font-weight:700; font-size:12.5px; border-radius:0; }
+.btn.primary{ background:var(--ink); color:var(--bg); }
+.route-result{ margin-top:12px; }
+.route-result .total{ font-size:26px; font-weight:700; letter-spacing:-.03em; }
+.route-result .total small{ font-size:12px; font-weight:400; color:var(--ink-3); margin-left:8px; letter-spacing:0; }
+.legs{ list-style:none; margin:8px 0 0; padding:0; }
+.leg{ display:grid; grid-template-columns:4px 1fr; gap:12px; padding:7px 0; border-top:1px solid var(--rule); font-size:12.5px; }
+.leg i{ display:block; background:var(--c); }
+.leg b{ display:block; } .leg span{ color:var(--ink-3); }
+
+.credit{ padding:14px 24px 18px; font-size:11px; color:var(--ink-3); line-height:1.45; }
+.credit a{ color:var(--ink-2); }
+
+/* ---------- detalhe ---------- */
+.detail{
+  position:absolute; left:16px; top:16px; width:300px; max-height:calc(100% - 32px); overflow:auto; z-index:5;
+  background:var(--panel); border:1px solid var(--ink); padding:16px 18px 18px; border-top:6px solid var(--acc,var(--ink));
+}
+.detail[hidden]{ display:none; }
+.detail .close{ position:absolute; right:8px; top:6px; border:0; background:none; font-size:20px; cursor:pointer; width:30px; height:30px; }
+.detail h2{ font-size:20px; letter-spacing:-.02em; padding-right:30px; line-height:1.1; }
+.detail .sub{ color:var(--ink-3); font-size:12px; margin-top:5px; }
+.bars{ display:flex; gap:4px; margin-top:10px; }
+.bars i{ display:block; width:26px; height:8px; border-radius:4px; background:var(--c); }
+.detail h3{ font-size:11px; font-weight:400; color:var(--ink-3); margin:16px 0 6px; }
+.arrivals{ list-style:none; margin:0; padding:0; }
+.arrival{ display:grid; grid-template-columns:4px 1fr auto; gap:12px; align-items:center; padding:7px 0; border-top:1px solid var(--rule); font-size:13px; }
+.arrival i{ display:block; height:100%; background:var(--c); border-radius:2px; min-height:24px; }
+.arrival .dir small{ display:block; color:var(--ink-3); font-size:11px; }
+.arrival .eta{ font-size:20px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.arrival .eta small{ font-size:11px; font-weight:400; color:var(--ink-3); margin-left:3px; letter-spacing:0; }
+.arrival .eta.now{ color:var(--ok); }
+.meter{ height:6px; background:var(--panel-2); margin-top:6px; }
+.meter i{ display:block; height:100%; background:var(--acc,var(--ink)); transition:width .6s ease; }
+.kv{ display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+.kv div{ font-size:11.5px; color:var(--ink-3); padding:6px 0; border-top:1px solid var(--rule); }
+.kv b{ display:block; font-size:15px; color:var(--ink); font-weight:700; letter-spacing:-.01em; }
+.detail .actions{ display:flex; gap:8px; margin-top:14px; }
+.detail .actions .btn{ flex:1; font-size:12px; padding:6px 8px; }
+
+/* ---------- mapa ---------- */
+.map-wrap{ position:relative; min-height:0; background:var(--map-bg); overflow:hidden; }
+svg.map{ width:100%; height:100%; display:block; touch-action:none; cursor:grab; user-select:none; -webkit-user-select:none; }
+svg.map.dragging{ cursor:grabbing; }
+.map-ctl{ position:absolute; right:16px; top:16px; display:flex; flex-direction:column; z-index:4; border:1px solid var(--ink); background:var(--panel); }
+.map-ctl button{ width:36px; height:36px; border:0; border-top:1px solid var(--rule); background:none; cursor:pointer; font-size:18px; display:grid; place-items:center; }
+.map-ctl button:first-child{ border-top:0; }
+.map-note{ position:absolute; left:16px; bottom:16px; z-index:4; font-size:11px; color:var(--ink-3); background:var(--panel); padding:6px 10px; border:1px solid var(--rule); }
+
+.lbl{ font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; font-size:21px; fill:var(--ink); paint-order:stroke; stroke:var(--map-bg); stroke-width:6px; stroke-linejoin:round; letter-spacing:-.01em; }
+.lbl.bold{ font-weight:700; }
+.geo-lbl{ font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; font-size:26px; fill:var(--ink-3); }
+.rail{ fill:none; stroke-linecap:round; stroke-linejoin:round; stroke-width:24; transition:opacity .3s; }
+.rail.reg{ stroke:var(--TR); stroke-width:22; stroke-dasharray:34 22; stroke-linecap:butt; }
+.st{ transition:opacity .3s; }
+.st .hit{ fill:transparent; stroke:none; cursor:pointer; }
+.st .tick{ stroke-width:12; stroke-linecap:butt; }
+.st circle.mk{ fill:var(--marker); stroke:var(--ink); stroke-width:6; cursor:pointer; }
+.st circle.mk.term{ stroke:none; }
+.st.sel circle.mk{ stroke-width:10; }
+.st.sel .tick{ stroke-width:18; }
+.train{ cursor:pointer; transition:opacity .3s; }
+.train rect{ stroke:var(--map-bg); stroke-width:4; }
+.train .head{ fill:#fff; opacity:.9; }
+.train.sel rect{ stroke:var(--ink); stroke-width:7; }
+.dim{ opacity:.12; }
+.route-path{ fill:none; stroke:var(--ink); stroke-width:46; stroke-linecap:round; stroke-linejoin:round; opacity:.15; }
+.route-path.core{ stroke-width:24; opacity:1; }
+
+/* ---------- sobre ---------- */
+.modal{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:grid; place-items:center; z-index:50; padding:16px; }
+.modal[hidden]{ display:none; }
+.modal .box{ background:var(--panel); border:1px solid var(--ink); max-width:560px; width:100%; max-height:90vh; overflow:auto; padding:28px 30px; position:relative; }
+.modal h2{ font-size:26px; letter-spacing:-.03em; margin-bottom:10px; }
+.modal p{ margin:10px 0; color:var(--ink-2); font-size:14px; max-width:62ch; }
+.modal .close{ position:absolute; right:10px; top:8px; border:0; background:none; font-size:22px; cursor:pointer; width:32px; height:32px; }
+
+/* ---------- mobile ---------- */
+@media (max-width: 900px){
+  .app{ grid-template-columns:1fr; grid-template-rows:1fr auto; }
+  aside{ order:2; border-right:0; border-top:4px solid var(--ink); max-height:48vh; }
+  .brand{ padding:10px 16px 10px; cursor:pointer; border-bottom:1px solid var(--rule); display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:center; }
+  .brand .logo{ width:52px; margin:0; }
+  .brand h1{ font-size:18px; }
+  .brand h1 small{ display:none; }
+  .live{ grid-column:1/-1; margin-top:0; }
+  .live .clock{ font-size:22px; }
+  .stats{ grid-column:1/-1; margin-top:4px; border-top:0; }
+  .stat{ padding-top:4px; }
+  .scroll,.credit{ display:none; }
+  aside.open .scroll,aside.open .credit{ display:block; }
+  .detail{ left:10px; right:10px; width:auto; top:auto; bottom:10px; max-height:52%; }
+  .map-note{ display:none; }
+  .notice{ font-size:11.5px; padding:7px 12px; }
+}
+@media (prefers-reduced-motion: reduce){ .live .dot{ animation:none; } .rail,.st,.train,.meter i{ transition:none; } }
+</style>
+</head>
+<body>
+
+<header class="notice" role="note">
+  <b>Projeto de design especulativo.</b>
+  <span>Este metrô não existe. Trens, horários e avisos são dados simulados.</span>
+  <button id="aboutBtn" type="button">Sobre</button>
+</header>
+
+<div class="app">
+  <aside id="aside">
+    <div class="brand" id="brandToggle">
+      <svg class="logo" viewBox="0 0 160 47" aria-hidden="true">
+        <path d="M146.492 12.3237V22.6665L130.131 6.40028C126.013 2.29107 120.538 0.0426422 114.705 0.0426422H114.642C108.793 0.0426422 103.318 2.33759 99.2006 6.47781L84.1178 21.6276C82.558 23.1937 80.4679 24.0621 78.2375 24.0776C75.9758 24.1086 73.9169 23.2248 72.3416 21.6586L56.9312 6.33825C48.4305 -2.11275 34.5954 -2.11275 26.0948 6.33825L0 32.296L9.54572 41.786L35.6561 15.8282C37.2314 14.262 39.3059 13.4092 41.5208 13.4092C43.7356 13.4092 45.8257 14.262 47.3855 15.8282L62.7959 31.1485C66.9292 35.2578 72.4196 37.5372 78.2687 37.4907C84.1178 37.4907 89.5925 35.1957 93.7103 31.0555L108.793 15.9057C110.353 14.3396 112.443 13.4712 114.673 13.4557C116.951 13.4092 118.994 14.3086 120.569 15.8747L138.366 33.5676H125.108V46.9961H159.984V12.3237H146.477H146.492Z" fill="#00AEEF"/>
+      </svg>
+      <h1>Metrô Goiânia <small>Mapa ao vivo da rede · horário local do seu computador</small></h1>
+      <div class="live"><span class="dot" aria-hidden="true"></span><span class="clock" id="clock">00:00:00</span><span class="lbl">horário local</span></div>
+      <div class="stats">
+        <div class="stat"><b id="stTrains">0</b><span>trens em via</span></div>
+        <div class="stat"><b id="stPax">0</b><span>passageiros/h</span></div>
+        <div class="stat"><b id="stHead">0</b><span>intervalo médio</span></div>
+      </div>
+    </div>
+
+    <div class="scroll">
+      <section class="section">
+        <h2>Linhas <button id="showAll" type="button">mostrar todas</button></h2>
+        <ul class="lines" id="lineList"></ul>
+      </section>
+      <section class="section">
+        <h2>Avisos de operação</h2>
+        <ul class="alerts" id="alertList"></ul>
+      </section>
+      <section class="section route">
+        <h2>Planejar trajeto</h2>
+        <form id="routeForm">
+          <div><label for="fromSel">De</label><select id="fromSel"></select></div>
+          <div><label for="toSel">Para</label><select id="toSel"></select></div>
+          <div class="row"><button class="btn primary" type="submit">Traçar rota</button><button class="btn" type="button" id="clearRoute">Limpar</button></div>
+        </form>
+        <div class="route-result" id="routeResult"></div>
+      </section>
+    </div>
+    <div class="credit">Mapa: Marck Al, Neuralbrand 2017 (<a href="https://neuralbrand.medium.com/metr%C3%B4-de-goi%C3%A2nia-5af7bfac647c" target="_blank" rel="noopener">medium.com/neuralbrand</a>). Projeto de design especulativo sem nenhum tipo de filiação. Interface e simulação: camada nova sobre o desenho original.</div>
+  </aside>
+
+  <div class="map-wrap">
+    <svg class="map" id="map" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mapa esquemático simulado do Metrô Goiânia"></svg>
+    <div class="map-ctl">
+      <button id="zIn" title="Aproximar" aria-label="Aproximar">+</button>
+      <button id="zOut" title="Afastar" aria-label="Afastar">−</button>
+      <button id="zFit" title="Ver tudo" aria-label="Ver toda a rede">⌂</button>
+    </div>
+    <div class="map-note">Mapa esquemático, fora de escala · arraste para mover, toque nas estações e nos trens</div>
+    <div class="detail" id="detail" hidden></div>
+  </div>
+</div>
+
+<div class="modal" id="about" hidden role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+  <div class="box">
+    <button class="close" id="aboutClose" aria-label="Fechar">×</button>
+    <h2 id="aboutTitle">Um metrô que só existe no papel</h2>
+    <p>Goiânia coleciona promessas de metrô de superfície e de VLT há décadas. Em 2017, o designer Marck Al desenhou o mapa de um metrô utópico para a cidade, com cinco linhas e um trem até Brasília, como exercício de design especulativo. Esta página imagina o passo seguinte: a tela de acompanhamento em tempo real daquela rede.</p>
+    <p>A estrutura do mapa, as linhas e as estações são as do desenho original. Tudo o que se move é ficção: os trens seguem um cronograma inventado, os avisos são sorteados e os números de passageiros variam conforme a hora simulada. A rede não corresponde a nenhum projeto oficial e não tem filiação com nenhum órgão público.</p>
+    <p>Fonte: <a href="https://neuralbrand.medium.com/metr%C3%B4-de-goi%C3%A2nia-5af7bfac647c" target="_blank" rel="noopener">“O Metrô de Goiânia: o design especulativo como reflexão da realidade”</a>, Neuralbrand, Medium. Referência de interface: painéis de operação ao vivo de redes de metrô.</p>
+    <p>Como usar: arraste para mover, use a roda ou os botões para aproximar, toque numa estação para ver os próximos trens, toque num trem para ver seu destino, ou trace um trajeto entre duas estações.</p>
+  </div>
+</div>
+
+<script>
+/* ================= DADOS (coordenadas lidas do mapa original, em px da imagem) ================= */
+const S = {
+  // Norte-Sul
+  itatiaia:{n:'Itatiaia',x:2023,y:404,lp:'r',term:1}, ufg:{n:'UFG',x:1945,y:482,lp:'r',bold:1}, saojudas:{n:'São Judas',x:1880,y:547,lp:'r'}, goiania2:{n:'Goiânia 2',x:1790,y:637,lp:'r'},
+  urias:{n:'Urias Magalhães',x:1652,y:845,lp:'ur'}, crimeia:{n:'Criméia',x:1652,y:969,lp:'ur'}, fama:{n:'Fama',x:1652,y:1060,lp:'ur'},
+  rodoviaria:{n:'Rodoviária',x:1652,y:1151,lp:'l'}, independencia:{n:'Independência',x:1652,y:1216,lp:'ur'}, paranaiba:{n:'Paranaíba',x:1652,y:1281,lp:'ur'},
+  central:{n:'Central',x:1652,y:1387,lp:'ur'}, civica:{n:'Praça Cívica',x:1652,y:1462,lp:'r',hub:1,dy:-16},
+  oeste:{n:'Oeste',x:1652,y:1552,lp:'ul',dy:8}, marista:{n:'Marista',x:1652,y:1632,lp:'l'},
+  av136:{n:'Av. 136',x:1600,y:1775,lp:'dr'}, bueno:{n:'Bueno',x:1490,y:1885,lp:'dr'}, vacabrava:{n:'Vaca Brava',x:1434,y:1941,lp:'dr'}, altobueno:{n:'Alto Bueno',x:1377,y:1998,lp:'dr'},
+  serrinha:{n:'Serrinha',x:1320,y:2055,lp:'dr'}, pqamazonia:{n:'Pq. Amazônia',x:1229,y:2146,lp:'dr'}, buriti:{n:'Buriti',x:1109,y:2266,lp:'dr'}, cruzeirosul:{n:'Cruzeiro do Sul',x:1010,y:2365,lp:'dr'},
+  veracruz:{n:'Vera Cruz',x:939,y:2436,lp:'dr'}, aparecida:{n:'Aparecida',x:833,y:2542,lp:'dr',term:1},
+  // Expressa
+  saocarlos:{n:'São Carlos',x:918,y:439,lp:'ur',term:1}, jdcuritiba:{n:'Jardim Curitiba',x:918,y:603,lp:'ur'}, vilamutirao:{n:'Vila Mutirão',x:918,y:710,lp:'ur'},
+  pqtremendao:{n:'Parque Tremendão',x:1000,y:858,lp:'ur'}, novaesperanca:{n:'Nova Esperança',x:1075,y:933,lp:'ur'}, saojose:{n:'São José',x:1200,y:1058,lp:'ur'},
+  campinas:{n:'Campinas',x:1295,y:1153,lp:'ur'}, atletico:{n:'Atlético',x:1360,y:1218,lp:'ur'}, pracaaviao:{n:'Praça do Avião',x:1455,y:1313,lp:'ur'},
+  pcmaes:{n:'Pç. da Mães',x:1530,y:1388,lp:'dl',bold:1,dx:10,dy:-10}, bosque:{n:'Bosque|dos Buritis',x:1628,y:1486,lp:'l',dy:-8},
+  cepal:{n:'Cepal',x:1727,y:1585,lp:'dl',dx:-14,dy:14}, serradourada:{n:'Serra Dourada',x:1781,y:1639,lp:'dl'}, jdgoias:{n:'Jardim Goiás',x:1852,y:1710,lp:'dl'}, flamboyant:{n:'Flamboyant',x:1928,y:1766,lp:'dl'},
+  alphaville:{n:'Alphaville',x:1979,y:1766,lp:'ur'}, puc:{n:'PUC',x:2075,y:1766,lp:'ur',bold:1}, conjfabiana:{n:'Conj. Fabiana',x:2163,y:1766,lp:'ur'}, pqlaranjeiras:{n:'Pq. das|Laranjeiras',x:2283,y:1766,lp:'ur'},
+  pqateneu:{n:'Pq. Ateneu',x:2410,y:1766,lp:'ur',term:1},
+  // Aeroporto
+  garavelo:{n:'Garavelo',x:169,y:1629,lp:'dr',term:1}, santarita:{n:'Santa Rita',x:346,y:1629,lp:'dr'}, rioformoso:{n:'Rio Formoso',x:487,y:1629,lp:'dr'}, jdeuropa:{n:'Jd. Europa',x:617,y:1629,lp:'dr'},
+  eldorado:{n:'Res. Eldorado',x:770,y:1629,lp:'dr'}, bandeiras:{n:'Bandeiras',x:897,y:1629,lp:'dr'}, vilauniao:{n:'Vila União',x:1014,y:1629,lp:'dr'}, jdamerica:{n:'Jardim América',x:1218,y:1629,lp:'dr'},
+  novasuica:{n:'Nova Suíça',x:1384,y:1629,lp:'dr'}, t2:{n:'T2',x:1546,y:1568,lp:'ul'},
+  araguaia:{n:'Araguaia',x:1727,y:1387,lp:'br',bold:1,dy:-8}, pecuaria:{n:'Pecuária',x:1857,y:1257,lp:'r',dx:6}, negrao:{n:'Negrão de Lima',x:1932,y:1182,lp:'r'}, jao:{n:'Jaó',x:2049,y:1065,lp:'r'},
+  stgenoveva:{n:'St. Genoveva',x:2112,y:1002,lp:'r'}, guanabara:{n:'Guanabara',x:2196,y:918,lp:'r'}, aeroporto:{n:'Aeroporto',x:2309,y:805,lp:'br',term:1,dx:-6,dy:10},
+  // Anhanguera
+  padrepelagio:{n:'Padre Pelágio',x:971,y:1044,lp:'l',term:1}, capuava:{n:'Capuava',x:1034,y:1107,lp:'ur'}, dergo:{n:'Dergo',x:1091,y:1164,lp:'ur'}, pracaa:{n:'Praça A',x:1141,y:1214,lp:'ur'},
+  v24out:{n:'24 de Outubro',x:1204,y:1277,lp:'ur'}, coimbra:{n:'Coimbra',x:1267,y:1340,lp:'ur'}, zoologico:{n:'Zoológico',x:1387,y:1387,lp:'ur'}, tocantins:{n:'Tocantins',x:1590,y:1387,lp:'ur'},
+  quintaav:{n:'5ª Avenida',x:1861,y:1387,lp:'ur'}, vilanova:{n:'Vila Nova',x:1984,y:1387,lp:'ur'}, pracabiblia:{n:'Praça da Bíblia',x:2131,y:1387,lp:'ur',bold:1},
+  palmito:{n:'Palmito',x:2300,y:1387,lp:'ur'}, sthilario:{n:'St. Hilário',x:2352,y:1409,lp:'ur'}, vilapedroso:{n:'Vila Pedroso',x:2385,y:1442,lp:'ur'}, matinha:{n:'Matinha',x:2440,y:1497,lp:'ur'},
+  vilagalvao:{n:'Vila Galvão',x:2545,y:1602,lp:'ur'}, senadorcanedo:{n:'Senador Canedo',x:2841,y:1898,lp:'ur',term:1},
+  // Circular
+  stsul:{n:'St. Sul',x:1729,y:1477,lp:'dl'}, universitario:{n:'Universitário',x:1795,y:1477,lp:'dl',dx:6,dy:-6}, pracacruzeiro:{n:'Praça do|Cruzeiro',x:1850,y:1477,lp:'dl'},
+  hospclinicas:{n:'Hospital|das Clínicas',x:1925,y:1531,lp:'dl'}, lesteuniv:{n:'Leste|Universitário',x:1965,y:1571,lp:'dl'},
+  riviera:{n:'Riviera',x:2026,y:1604,lp:'dr'}, aruana:{n:'Aruanã',x:2092,y:1604,lp:'dr'},
+  pindorama:{n:'Pindorama',x:2131,y:1568,lp:'dr'}, novomundo:{n:'Novo Mundo',x:2131,y:1512,lp:'dr'}, vilabandeirantes:{n:'Vila Bandeirantes',x:2131,y:1434,lp:'dr'},
+  // Trem Planalto (fora do desenho: só existem na simulação)
+  teresopolis:{n:'Teresópolis',x:3150,y:521,off:1}, anapolis:{n:'Anápolis',x:3400,y:521,off:1}, abadiania:{n:'Abadiânia',x:3650,y:521,off:1}, alexania:{n:'Alexânia',x:3900,y:521,off:1}, brasilia:{n:'Brasília',x:4150,y:521,off:1,term:1},
+};
+
+const LINES = [
+  {id:'NS',name:'Norte-Sul',sub:'Itatiaia ↔ Aparecida',css:'var(--NS)',
+   st:['itatiaia','ufg','saojudas','goiania2','urias','crimeia','fama','rodoviaria','independencia','paranaiba','central','civica','oeste','marista','av136','bueno','vacabrava','altobueno','serrinha','pqamazonia','buriti','cruzeirosul','veracruz','aparecida'],
+   via:{goiania2_urias:[[1652,775]], marista_av136:[[1652,1723]]}, trains:11,speed:4.6,dwell:25,cars:6},
+  {id:'EX',name:'Expressa',sub:'São Carlos ↔ Pq. Ateneu',css:'var(--EX)',
+   st:['saocarlos','jdcuritiba','vilamutirao','pqtremendao','novaesperanca','saojose','campinas','atletico','pracaaviao','pcmaes','bosque','cepal','serradourada','jdgoias','flamboyant','alphaville','puc','conjfabiana','pqlaranjeiras','pqateneu'],
+   via:{vilamutirao_pqtremendao:[[918,776]], jdgoias_flamboyant:[[1908,1766]]}, trains:10,speed:4.6,dwell:25,cars:6},
+  {id:'AE',name:'Aeroporto',sub:'Garavelo ↔ Aeroporto',css:'var(--AE)',
+   st:['garavelo','santarita','rioformoso','jdeuropa','eldorado','bandeiras','vilauniao','jdamerica','novasuica','t2','bosque','civica','araguaia','pecuaria','negrao','jao','stgenoveva','guanabara','aeroporto'],
+   via:{novasuica_t2:[[1485,1629]]}, trains:10,speed:4.6,dwell:25,cars:6},
+  {id:'AN',name:'Anhanguera',sub:'Padre Pelágio ↔ Senador Canedo',css:'var(--AN)',
+   st:['padrepelagio','capuava','dergo','pracaa','v24out','coimbra','zoologico','pcmaes','tocantins','central','araguaia','quintaav','vilanova','pracabiblia','palmito','sthilario','vilapedroso','matinha','vilagalvao','senadorcanedo'],
+   via:{coimbra_zoologico:[[1314,1387]], palmito_sthilario:[[2330,1387]]}, trains:10,speed:4.6,dwell:25,cars:6},
+  {id:'CI',name:'Circular',sub:'Praça Cívica ↔ Praça da Bíblia',css:'var(--CI)',
+   st:['civica','stsul','universitario','pracacruzeiro','hospclinicas','lesteuniv','riviera','aruana','pindorama','novomundo','vilabandeirantes','pracabiblia'],
+   via:{civica_stsul:[[1680,1477]], pracacruzeiro_hospclinicas:[[1875,1481]], lesteuniv_riviera:[[1998,1604]], aruana_pindorama:[[2131,1604]]}, trains:5,speed:4.6,dwell:25,cars:4},
+  {id:'TR',name:'Trem',sub:'Planalto Trens · Goiânia ↔ Brasília',css:'var(--TR)',reg:true,
+   st:['rodoviaria','teresopolis','anapolis','abadiania','alexania','brasilia'],
+   via:{rodoviaria_teresopolis:[[2282,521]]}, trains:4,speed:9,dwell:60,cars:8},
+];
+const TRAIN_CITIES=['Goiânia','Teresópolis','Anápolis','Abadiânia','Alexânia','Brasília'];
+const SIM_SPEED=1, TRANSFER_PENALTY=240; // relógio sincronizado com o horário local do computador
+LINES.forEach(L=>{ L.speed*=1.8; L.dwell=L.reg?45:20; });
+
+/* ================= CRONOGRAMA ================= */
+function pathPoints(L, reverse){
+  const ids = reverse ? [...L.st].reverse() : L.st; const out=[];
+  for(let i=0;i<ids.length;i++){
+    const a=ids[i]; out.push({x:S[a].x,y:S[a].y,st:a});
+    if(i<ids.length-1 && L.via){ const b=ids[i+1]; const v=L.via[a+'_'+b]?L.via[a+'_'+b]:(L.via[b+'_'+a]?[...L.via[b+'_'+a]].reverse():null); if(v) v.forEach(p=>out.push({x:p[0],y:p[1],st:null})); }
+  }
+  return out;
+}
+function buildSchedule(L, reverse){
+  const pts=pathPoints(L,reverse); const stIdx=[]; pts.forEach((p,i)=>{ if(p.st) stIdx.push(i); });
+  const segPts=[],segLen=[];
+  for(let k=0;k<stIdx.length-1;k++){ const sub=pts.slice(stIdx[k],stIdx[k+1]+1); let len=0; for(let i=1;i<sub.length;i++) len+=Math.hypot(sub[i].x-sub[i-1].x,sub[i].y-sub[i-1].y); segPts.push(sub); segLen.push(len); }
+  const arr=[],dep=[]; let t=0;
+  for(let k=0;k<stIdx.length;k++){ arr.push(t); t+=L.dwell; dep.push(t); if(k<segLen.length) t+=segLen[k]/L.speed; }
+  return {ids:reverse?[...L.st].reverse():L.st, segPts, segLen, arr, dep, oneWay:dep[dep.length-1]};
+}
+LINES.forEach((L,li)=>{
+  L.fwd=buildSchedule(L,false); L.bwd=buildSchedule(L,true); L.cycle=L.fwd.oneWay+L.bwd.oneWay; L.trainObjs=[];
+  for(let k=0;k<L.trains;k++) L.trainObjs.push({id:L.id+String(101+k*2+li),L,phase:(k/L.trains)*L.cycle+li*137,occ:.25+Math.random()*.5});
+});
+function trainState(tr,t){
+  const L=tr.L; const tau=((t+tr.phase)%L.cycle+L.cycle)%L.cycle;
+  const fwd=tau<L.fwd.oneWay; const sch=fwd?L.fwd:L.bwd; const u=fwd?tau:tau-L.fwd.oneWay;
+  let i=0; for(;i<sch.arr.length;i++){ if(u<sch.dep[i]) break; } if(i>=sch.arr.length) i=sch.arr.length-1;
+  if(u<=sch.dep[i] && u>=sch.arr[i]){
+    const pt=i<sch.segPts.length?sch.segPts[i][0]:sch.segPts[sch.segPts.length-1].slice(-1)[0];
+    const nx=i<sch.segPts.length?sch.segPts[i][1]:null; const ls=sch.segPts[sch.segPts.length-1];
+    const ang=nx?Math.atan2(nx.y-pt.y,nx.x-pt.x)*180/Math.PI:Math.atan2(ls[ls.length-1].y-ls[ls.length-2].y,ls[ls.length-1].x-ls[ls.length-2].x)*180/Math.PI;
+    return {x:pt.x,y:pt.y,ang,fwd,at:i,next:Math.min(i+1,sch.ids.length-1),sch,dwell:true,prog:0};
+  }
+  const k=i-1; const frac=(u-sch.dep[k])/(sch.arr[k+1]-sch.dep[k]); const sub=sch.segPts[k]; const target=sch.segLen[k]*frac; let acc=0;
+  for(let j=1;j<sub.length;j++){ const d=Math.hypot(sub[j].x-sub[j-1].x,sub[j].y-sub[j-1].y);
+    if(acc+d>=target||j===sub.length-1){ const f=d?Math.min(1,(target-acc)/d):0;
+      return {x:sub[j-1].x+(sub[j].x-sub[j-1].x)*f,y:sub[j-1].y+(sub[j].y-sub[j-1].y)*f,ang:Math.atan2(sub[j].y-sub[j-1].y,sub[j].x-sub[j-1].x)*180/Math.PI,fwd,at:-1,next:k+1,prev:k,sch,dwell:false,prog:frac}; }
+    acc+=d; }
+  return {x:sub[0].x,y:sub[0].y,ang:0,fwd,at:k,next:k+1,sch,dwell:true,prog:0};
+}
+function arrivalsAt(stId,t){
+  const out=[];
+  LINES.forEach(L=>{ if(hiddenLines.has(L.id)) return;
+    [[L.fwd,0],[L.bwd,L.fwd.oneWay]].forEach(([sch,offset])=>{
+      const idx=sch.ids.indexOf(stId); if(idx<0||idx===sch.ids.length-1) return;
+      const dest=nm(sch.ids[sch.ids.length-1]); const list=[];
+      L.trainObjs.forEach(tr=>{ const tau=((t+tr.phase)%L.cycle+L.cycle)%L.cycle; const abs=offset+sch.arr[idx]; let wait=(abs-tau+L.cycle)%L.cycle; if(tau>=abs&&tau<=offset+sch.dep[idx]) wait=0; list.push({wait,tr}); });
+      list.sort((a,b)=>a.wait-b.wait); list.slice(0,2).forEach(e=>out.push({L,dest,wait:e.wait,tr:e.tr}));
+    });
+  });
+  return out;
+}
+
+/* ================= SIMULAÇÃO ================= */
+const t0=Date.now(); const simStart=(()=>{ const d=new Date(); return d.getHours()*3600+d.getMinutes()*60+d.getSeconds(); })();
+function simNow(){ return (Date.now()-t0)/1000*SIM_SPEED; }
+function simClock(){ const d=new Date(); const s=d.getHours()*3600+d.getMinutes()*60+d.getSeconds(); return {h:String(Math.floor(s/3600)).padStart(2,'0'),m:String(Math.floor(s%3600/60)).padStart(2,'0'),ss:String(s%60).padStart(2,'0'),hour:s/3600}; }
+function demandFactor(h){ const g=(c,w)=>Math.exp(-Math.pow((h-c)/w,2)); return Math.min(1,.18+.85*g(7.8,1.3)+.9*g(18.1,1.5)+.25*g(12.5,1.6)); }
+
+const ALERT_POOL=[
+  {line:'NS',warn:true,text:'Intervalo maior entre trens entre Serrinha e Aparecida por manutenção programada na via.'},
+  {line:'AE',warn:true,text:'Elevadores da estação Aeroporto em manutenção. Acesso por rampas e escadas rolantes.'},
+  {line:'NS',warn:true,text:'Velocidade reduzida entre Itatiaia e UFG. Viagens podem levar até 6 min a mais.'},
+  {line:'AN',warn:true,text:'Estação Zoológico com acesso único pela Av. Anhanguera até as 22h.'},
+  {line:'EX',warn:true,text:'Dia de jogo no Serra Dourada: trens extras a partir das 19h e fluxo intenso em Jardim Goiás.'},
+  {line:'CI',warn:true,text:'Circular com intervalo ampliado entre Riviera e Pindorama até as 15h.'},
+  {line:'TR',warn:false,text:'Trem Planalto para Brasília parte da plataforma GYN-BSB da Rodoviária no horário.'},
+  {line:'NS',warn:false,text:'Operação normal em toda a linha. Intervalo de 4 min no horário de pico.'},
+  {line:'AE',warn:false,text:'Integração com o terminal de ônibus Bandeiras reaberta após obras.'},
+  {line:'AN',warn:false,text:'Eixo Anhanguera com operação normal. Ar-condicionado em todas as composições.'},
+  {line:'EX',warn:false,text:'Vestibular PUC: reforço de pessoal nas estações PUC e Universitário.'},
+];
+let alerts=[], lineStatus={};
+function rollAlerts(){
+  const pool=[...ALERT_POOL].sort(()=>Math.random()-.5); const warn=pool.filter(a=>a.warn).slice(0,1+Math.floor(Math.random()*2)); const ok=pool.filter(a=>!a.warn).slice(0,2); const c=simClock();
+  alerts=[...warn,...ok].map(a=>({...a,at:`${c.h}:${c.m}`})); lineStatus={}; LINES.forEach(L=>lineStatus[L.id]='Normal'); warn.forEach(a=>lineStatus[a.line]='Atenção');
+  renderLines(); renderAlerts();
+}
+
+/* ================= SVG ================= */
+const NS='http://www.w3.org/2000/svg';
+const el=(tag,attrs,parent)=>{ const e=document.createElementNS(NS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); if(parent) parent.appendChild(e); return e; };
+const svg=document.getElementById('map');
+const gGeo=el('g',{},svg), gRails=el('g',{},svg), gRoute=el('g',{},svg), gSt=el('g',{},svg), gTr=el('g',{},svg);
+const hiddenLines=new Set(); let focusLine=null, selected=null;
+const WORLD={x:60,y:300,w:2960,h:2400}; let gridRect=null;
+
+function roundedPath(pts, r){
+  // caminho com cantos arredondados nos pontos intermediários (via), como no desenho original
+  if(pts.length<3) return pts.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' ');
+  let d='M'+pts[0].x+' '+pts[0].y;
+  for(let i=1;i<pts.length-1;i++){
+    const p=pts[i],a=pts[i-1],b=pts[i+1];
+    if(p.st){ d+=' L'+p.x+' '+p.y; continue; }
+    const da=Math.hypot(p.x-a.x,p.y-a.y), db=Math.hypot(p.x-b.x,p.y-b.y); const rr=Math.min(r,da/2,db/2);
+    const ax=p.x+(a.x-p.x)/da*rr, ay=p.y+(a.y-p.y)/da*rr, bx=p.x+(b.x-p.x)/db*rr, by=p.y+(b.y-p.y)/db*rr;
+    d+=' L'+ax.toFixed(1)+' '+ay.toFixed(1)+' Q'+p.x+' '+p.y+' '+bx.toFixed(1)+' '+by.toFixed(1);
+  }
+  const l=pts[pts.length-1]; d+=' L'+l.x+' '+l.y; return d;
+}
+function drawGeo(){
+  // grade leve e infinita (padrão repetido, cobre sempre a área visível)
+  const defs=el('defs',{},gGeo); const pat=el('pattern',{id:'grid',x:'200',y:'350',width:'225',height:'225',patternUnits:'userSpaceOnUse'},defs);
+  el('path',{d:'M 0 0 L 0 225 M 0 0 L 225 0',fill:'none',stroke:'var(--grid)','stroke-width':'3'},pat);
+  gridRect=el('rect',{x:WORLD.x,y:WORLD.y,width:WORLD.w,height:WORLD.h,fill:'url(#grid)'},gGeo);
+  // cursos d’água, traçado aproximado do desenho original
+  ['M 1450 300 L 1450 420 L 1680 650 L 1680 1000 L 1830 1150 L 1830 1240 L 2230 1240 L 2300 1300 L 2480 1300 L 2600 1420 L 2600 1500 L 2850 1750 L 2850 2050 L 2760 2140 L 2760 2300 L 2500 2560',
+   'M 2150 300 L 2150 420 L 2260 520 L 2460 520 L 2520 580 L 2520 800',
+   'M 1750 880 L 1620 1010 L 1520 1010 L 1420 1110 L 1420 1260 L 1250 1430 L 1250 1560 L 1120 1690 L 1120 1800 L 1000 1920 L 760 1920 L 520 2160 L 120 2160',
+   'M 1290 1560 L 1140 1700 L 1140 1800',
+   'M 940 1300 L 940 1470 L 780 1630',
+   'M 2770 2140 L 2300 2140 L 2000 2440 L 2000 2650',
+   'M 1580 2360 L 1840 2360 L 2000 2200'].forEach(d=>el('path',{d,fill:'none',stroke:'var(--water)','stroke-width':'40','stroke-linecap':'round','stroke-linejoin':'round'},gGeo));
+  // parques
+  el('path',{d:'M 1395 1400 L 1470 1400 L 1470 1470 L 1510 1520 L 1430 1540 L 1395 1500 Z',fill:'var(--park)'},gGeo);
+  el('path',{d:'M 1430 1915 L 1500 1900 L 1520 1960 L 1470 2000 L 1420 1980 Z',fill:'var(--park)'},gGeo);
+  // aeroporto
+  el('rect',{x:2200,y:720,width:325,height:180,rx:14,fill:'var(--box)'},gGeo);
+  el('path',{d:'M4.35602 33L0 23.0897H4.90052L9.5288 30.2127L34.8482 29.4213L22.8351 0H29.3691L47.8822 28.8707H52.1702C54.6885 28.8363 57.0026 29.146 59.0445 29.7998L61.8691 30.7289C63.945 31.4515 65 32.1741 65 32.9656C65 33.7914 63.945 34.5829 61.8691 35.2711L59.0445 36.2002C57.0026 36.854 54.6544 37.1981 52.034 37.1981L47.8822 37.0949L29.3691 66H22.8351L34.8482 36.5787L9.5288 35.7873L4.90052 42.9103H0L4.35602 33Z',fill:'var(--ink)',transform:'translate(2400 738) scale(1.35)'},gGeo);
+  // Planalto Trens em GYN-BSB
+  const pt=el('g',{transform:'translate(1560 1048)'},gGeo);
+  const lg=el('g',{transform:'translate(-27.5 -32) scale(0.9)'},pt);
+  el('path',{d:'M0 49.6205H32.5066L16.1329 66H33.0684L49.2013 49.6205H61V37.8978H0V49.6205Z',fill:'#BE1E2D'},lg);
+  el('path',{d:'M28.5737 16.3796L44.8671 0H27.9316L11.7987 16.3796H0V28.1022H61V16.3796H28.5737Z',fill:'#BE1E2D'},lg);
+  const g=el('text',{x:0,y:50,class:'lbl bold','text-anchor':'middle','font-size':'20'},pt); g.textContent='GYN-BSB';
+}
+function drawRails(){
+  LINES.forEach(L=>{
+    let pts=pathPoints(L,false); if(L.reg) pts=pts.filter(p=>!(p.st&&S[p.st].off)).concat([{x:3000,y:521}]);
+    const p=el('path',{d:roundedPath(pts,90),class:'rail'+(L.reg?' reg':''),'data-line':L.id},gRails); if(!L.reg) p.style.stroke=L.css;
+  });
+}
+function stationLines(id){ return LINES.filter(L=>L.st.includes(id)); }
+function lineDirAt(L,id){
+  const pts=pathPoints(L,false); const i=pts.findIndex(p=>p.st===id); const a=pts[Math.max(0,i-1)], b=pts[Math.min(pts.length-1,i+1)];
+  const dx=b.x-a.x, dy=b.y-a.y; const n=Math.hypot(dx,dy)||1; return [dx/n,dy/n];
+}
+const DIRV={ur:[1,-1],dl:[-1,1],dr:[1,1],ul:[-1,-1],r:[1,0],l:[-1,0],t:[0,-1],b:[0,1],br:[1,1],bl:[-1,1],tr:[1,-1],tl:[-1,-1]};
+const ROT={ur:-45,dl:-45,dr:45,ul:45};
+function drawStations(){
+  Object.keys(S).forEach(id=>{
+    const s=S[id]; if(s.off) return; const ls=stationLines(id); const xfer=ls.length>1;
+    const g=el('g',{class:'st','data-st':id,transform:`translate(${s.x} ${s.y})`},gSt);
+    el('circle',{r:44,class:'hit'},g);
+    const lp=s.lp||'r'; const lv=DIRV[lp]; const ln=Math.hypot(lv[0],lv[1]); const ld=[lv[0]/ln,lv[1]/ln];
+    let ox,oy;
+    if(xfer){ const r=s.hub?30:24; el('circle',{r,class:'mk'},g); ox=ld[0]*(r+8); oy=ld[1]*(r+8); }
+    else if(s.term){ const c=el('circle',{r:22,class:'mk term'},g); c.style.fill=ls[0].css; ox=ld[0]*34; oy=ld[1]*34; }
+    else {
+      const [dx,dy]=lineDirAt(ls[0],id); let nx=-dy, ny=dx; if(nx*ld[0]+ny*ld[1]<0){ nx=-nx; ny=-ny; }
+      const tk=el('line',{x1:(nx*6).toFixed(1),y1:(ny*6).toFixed(1),x2:(nx*30).toFixed(1),y2:(ny*30).toFixed(1),class:'tick'},g); tk.style.stroke=ls[0].css;
+      ox=nx*36; oy=ny*36;
+    }
+    const t=el('text',{class:'lbl'+((s.bold||s.term||s.hub)?' bold':'')},g);
+    const rot=ROT[lp]; const anchor=(lp==='l'||lp==='dl'||lp==='ul'||lp==='bl'||lp==='tl')?'end':(lp==='t'||lp==='b')?'middle':'start';
+    const dyEm=(lp==='t')?0:(lp==='b'||lp==='br'||lp==='bl')?.9:.35;
+    t.setAttribute('transform',`translate(${(ox+(s.dx||0)).toFixed(1)} ${(oy+(s.dy||0)).toFixed(1)})`+(rot?` rotate(${rot})`:'')); t.setAttribute('text-anchor',anchor); t.setAttribute('dy',dyEm+'em');
+    const parts=s.n.split('|'); if(parts.length===1) t.textContent=s.n; else parts.forEach((pt,i)=>{ const ts=el('tspan',{x:0,dy:i?'1.05em':'0'},t); ts.textContent=pt; });
+  });
+}
+function drawTrains(){
+  LINES.forEach(L=>L.trainObjs.forEach(tr=>{
+    const g=el('g',{class:'train','data-train':tr.id,'data-line':L.id},gTr); const w=L.reg?84:62,h=L.reg?24:28;
+    const r=el('rect',{x:-w/2,y:-h/2,width:w,height:h,rx:h/2},g); r.style.fill=L.css; el('circle',{cx:w/2-12,cy:0,r:5,class:'head'},g); tr.el=g;
+  }));
+}
+drawGeo(); drawRails(); drawStations(); drawTrains();
+
+/* ---- viewBox / pan / zoom ---- */
+let vb={...WORLD};
+function fit(){ const r=svg.getBoundingClientRect(); const ar=r.width/r.height; let w=WORLD.w,h=WORLD.h; if(w/h<ar) w=h*ar; else h=w/ar; vb={x:WORLD.x+WORLD.w/2-w/2,y:WORLD.y+WORLD.h/2-h/2,w,h}; applyVB(); }
+function applyVB(){ svg.setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.w} ${vb.h}`); if(gridRect){ gridRect.setAttribute('x',vb.x-vb.w); gridRect.setAttribute('y',vb.y-vb.h); gridRect.setAttribute('width',vb.w*3); gridRect.setAttribute('height',vb.h*3); } }
+function zoomAt(f,cx,cy){ const nw=Math.max(500,Math.min(12000,vb.w*f)); const nh=vb.h*(nw/vb.w); vb.x=cx-(cx-vb.x)*(nw/vb.w); vb.y=cy-(cy-vb.y)*(nh/vb.h); vb.w=nw; vb.h=nh; applyVB(); }
+function toWorld(px,py){ const r=svg.getBoundingClientRect(); return [vb.x+(px-r.left)/r.width*vb.w, vb.y+(py-r.top)/r.height*vb.h]; }
+const ptrs=new Map(); let dragDist=0,lastMid=null,lastDist=0;
+svg.addEventListener('pointerdown',e=>{ ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY}); dragDist=0; lastMid=null; svg.classList.add('dragging'); });
+svg.addEventListener('pointermove',e=>{ if(!ptrs.has(e.pointerId)) return; const prev=ptrs.get(e.pointerId); ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY}); const r=svg.getBoundingClientRect(); const k=vb.w/r.width;
+  if(ptrs.size===1){ const dx=e.clientX-prev.x,dy=e.clientY-prev.y; dragDist+=Math.abs(dx)+Math.abs(dy); vb.x-=dx*k; vb.y-=dy*k; applyVB(); }
+  else if(ptrs.size===2){ const [a,b]=[...ptrs.values()]; const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2}; const dist=Math.hypot(a.x-b.x,a.y-b.y);
+    if(lastMid){ vb.x-=(mid.x-lastMid.x)*k; vb.y-=(mid.y-lastMid.y)*k; const [wx,wy]=toWorld(mid.x,mid.y); if(lastDist) zoomAt(lastDist/dist,wx,wy); else applyVB(); } lastMid=mid; lastDist=dist; dragDist+=10; } });
+function endPtr(e){ if(!ptrs.has(e.pointerId)) return; ptrs.delete(e.pointerId); if(ptrs.size===0) svg.classList.remove('dragging');
+  if(dragDist<6&&e.type==='pointerup'){ const st=e.target.closest('[data-st]'); const tr=e.target.closest('[data-train]'); if(tr) select('tr',tr.getAttribute('data-train')); else if(st) select('st',st.getAttribute('data-st')); else select(null); } }
+svg.addEventListener('pointerup',endPtr); svg.addEventListener('pointercancel',endPtr); svg.addEventListener('pointerleave',endPtr);
+svg.addEventListener('wheel',e=>{ e.preventDefault(); const [wx,wy]=toWorld(e.clientX,e.clientY); zoomAt(e.deltaY>0?1.12:0.89,wx,wy); },{passive:false});
+document.getElementById('zIn').onclick=()=>zoomAt(.8,vb.x+vb.w/2,vb.y+vb.h/2);
+document.getElementById('zOut').onclick=()=>zoomAt(1.25,vb.x+vb.w/2,vb.y+vb.h/2);
+document.getElementById('zFit').onclick=fit; window.addEventListener('resize',fit); fit();
+
+/* ================= PAINEL ================= */
+const lineList=document.getElementById('lineList');
+function renderLines(){
+  lineList.innerHTML='';
+  LINES.forEach(L=>{ const li=document.createElement('li'); const b=document.createElement('button'); b.type='button';
+    b.className='line-row'+(focusLine===L.id?' active':'')+(hiddenLines.has(L.id)?' hidden-line':''); const st=lineStatus[L.id]||'Normal';
+    b.innerHTML=`<span class="bar${L.reg?' dash':''}" style="--c:${L.css}"></span><span class="name">${L.name}<small>${L.sub}</small></span><span class="status ${st==='Normal'?'':'warn'}">${hiddenLines.has(L.id)?'oculta':st}</span>`;
+    b.title='Clique para destacar, clique duplo para ocultar';
+    b.addEventListener('click',()=>{ focusLine=focusLine===L.id?null:L.id; renderLines(); applyDim(); });
+    b.addEventListener('dblclick',()=>{ if(hiddenLines.has(L.id)) hiddenLines.delete(L.id); else hiddenLines.add(L.id); renderLines(); applyDim(); });
+    li.appendChild(b); lineList.appendChild(li); });
+}
+document.getElementById('showAll').onclick=()=>{ hiddenLines.clear(); focusLine=null; renderLines(); applyDim(); };
+function applyDim(){
+  svg.querySelectorAll('[data-line]').forEach(n=>{ const id=n.getAttribute('data-line'); const off=hiddenLines.has(id)||(focusLine&&focusLine!==id&&!routeLineIds.has(id))||(routeLineIds.size&&!routeLineIds.has(id)); n.classList.toggle('dim',!!off); });
+  svg.querySelectorAll('[data-st]').forEach(n=>{ const id=n.getAttribute('data-st'); const ls=stationLines(id).map(L=>L.id);
+    const visible=ls.some(l=>!hiddenLines.has(l)&&(!focusLine||focusLine===l||routeLineIds.has(l))&&(!routeLineIds.size||routeStations.has(id))); n.classList.toggle('dim',!visible); });
+}
+function renderAlerts(){ const ul=document.getElementById('alertList'); ul.innerHTML='';
+  alerts.forEach(a=>{ const L=LINES.find(x=>x.id===a.line); const li=document.createElement('li'); li.innerHTML=`<div class="alert"><i style="--c:${L.css}"></i><div>${a.text}<time>${L.name} · atualizado às ${a.at}</time></div></div>`; ul.appendChild(li); }); }
+
+/* ================= DETALHE ================= */
+const detail=document.getElementById('detail');
+function select(type,id){
+  svg.querySelectorAll('.sel').forEach(n=>n.classList.remove('sel'));
+  if(!type){ selected=null; detail.hidden=true; return; }
+  selected={type,id}; const node=svg.querySelector(type==='st'?`[data-st="${id}"]`:`[data-train="${id}"]`); if(node){ node.classList.add('sel'); if(type==='tr') gTr.appendChild(node); }
+  detail.hidden=false; renderDetail();
+}
+const nm=id=>S[id].n.replace('|',' ');
+const fmtWait=w=>{ const m=Math.round(w/60); return m<=0?'agora':m; };
+const occLabel=o=>o<.35?'tranquilo':o<.65?'moderado':o<.85?'cheio':'lotado';
+function renderDetail(){
+  if(!selected) return; const t=simNow(); const c=simClock(); const dem=demandFactor(c.hour);
+  if(selected.type==='st'){
+    const id=selected.id,s=S[id],ls=stationLines(id); detail.style.setProperty('--acc',ls.length>1?'var(--ink)':ls[0].css);
+    const arr=arrivalsAt(id,t); const load=Math.min(1,dem*(ls.length>1?1:.7)*(s.term?.8:1));
+    detail.innerHTML=`<button class="close" aria-label="Fechar">×</button><h2>${nm(id)}</h2>
+      <div class="sub">${ls.length>1?'Estação de integração':'Estação'}${s.term?' · terminal':''} · ${ls.map(L=>L.name).join(' · ')}</div>
+      <div class="bars">${ls.map(L=>`<i style="--c:${L.css}"></i>`).join('')}</div>
+      <h3>Próximos trens</h3>
+      <ul class="arrivals">${arr.length?arr.map(a=>`<li class="arrival"><i style="--c:${a.L.css}"></i><span class="dir">${a.dest}<small>${a.L.name} · trem ${a.tr.id} · ${occLabel(a.tr.occ)}</small></span><span class="eta ${a.wait<30?'now':''}">${fmtWait(a.wait)}${a.wait<30?'':'<small>min</small>'}</span></li>`).join(''):'<li class="arrival"><i></i><span class="dir">Nenhuma linha ativa nesta estação</span></li>'}</ul>
+      <h3>Movimento agora</h3>
+      <div style="font-size:12.5px">${load<.35?'Fluxo tranquilo':load<.65?'Fluxo moderado':load<.85?'Plataformas cheias':'Plataformas lotadas'} · ${Math.round(load*100)}% da capacidade</div>
+      <div class="meter"><i style="width:${Math.round(load*100)}%"></i></div>
+      <div class="actions"><button class="btn" data-act="from">Partir daqui</button><button class="btn" data-act="to">Chegar aqui</button></div>`;
+    detail.querySelector('[data-act="from"]').onclick=()=>{ fromSel.value=id; openAside(); };
+    detail.querySelector('[data-act="to"]').onclick=()=>{ toSel.value=id; openAside(); };
+  }else{
+    const tr=LINES.flatMap(L=>L.trainObjs).find(x=>x.id===selected.id); if(!tr){ select(null); return; }
+    const st=trainState(tr,t); const L=tr.L; const ids=st.sch.ids; detail.style.setProperty('--acc',L.css);
+    const dest=nm(ids[ids.length-1]), next=nm(ids[st.next]); const speed=st.dwell?0:Math.round((L.reg?96:58)+Math.sin(st.prog*Math.PI)*(L.reg?40:26));
+    const occ=Math.min(1,Math.max(.05,tr.occ*(.5+dem))); const delay=lineStatus[L.id]==='Atenção'?2+Math.floor(tr.phase%3):0;
+    detail.innerHTML=`<button class="close" aria-label="Fechar">×</button><h2>Trem ${tr.id}</h2><div class="sub">${L.name} · sentido ${dest}</div>
+      <div class="bars"><i style="--c:${L.css}"></i></div>
+      <h3>Situação</h3>
+      <div class="kv"><div>${st.dwell?'Parado em':'Próxima estação'}<b>${st.dwell?nm(ids[st.at]):next}</b></div><div>Pontualidade<b style="color:${delay?'var(--warn)':'var(--ok)'}">${delay?'+'+delay+' min':'no horário'}</b></div><div>Velocidade<b>${speed} km/h</b></div><div>Composição<b>${L.cars} carros</b></div></div>
+      <h3>Lotação a bordo</h3><div style="font-size:12.5px">${occLabel(occ)} · ${Math.round(occ*100)}%</div><div class="meter"><i style="width:${Math.round(occ*100)}%"></i></div>`;
+  }
+  detail.querySelector('.close').onclick=()=>select(null);
+}
+
+/* ================= ROTA ================= */
+const fromSel=document.getElementById('fromSel'), toSel=document.getElementById('toSel');
+const sortedSt=Object.keys(S).sort((a,b)=>S[a].n.replace('|',' ').localeCompare(S[b].n.replace('|',' '),'pt'));
+[fromSel,toSel].forEach(sel=>sortedSt.forEach(id=>{ const o=document.createElement('option'); o.value=id; o.textContent=S[id].n.replace('|',' ')+(S[id].off?' (Trem Planalto)':''); sel.appendChild(o); }));
+fromSel.value='aeroporto'; toSel.value='bueno';
+let routeLineIds=new Set(), routeStations=new Set();
+function planRoute(a,b){
+  const nodes=new Map(), adj=new Map(); const add=(u,v,w)=>{ if(!adj.has(u)) adj.set(u,[]); adj.get(u).push([v,w]); };
+  LINES.forEach(L=>{ if(hiddenLines.has(L.id)) return; const sch=L.fwd; for(let i=0;i<L.st.length;i++){ const u=L.st[i]+'|'+L.id; nodes.set(u,{st:L.st[i],L}); if(i<L.st.length-1){ const w=sch.arr[i+1]-sch.dep[i]+L.dwell; add(u,L.st[i+1]+'|'+L.id,w); add(L.st[i+1]+'|'+L.id,u,w); } } });
+  Object.keys(S).forEach(id=>{ const ls=stationLines(id).filter(L=>!hiddenLines.has(L.id)); ls.forEach(x=>ls.forEach(y=>{ if(x!==y) add(id+'|'+x.id,id+'|'+y.id,TRANSFER_PENALTY); })); });
+  const dist=new Map(),prev=new Map(),Q=new Set(); nodes.forEach((_,k)=>{ dist.set(k,Infinity); Q.add(k); });
+  stationLines(a).forEach(L=>{ if(nodes.has(a+'|'+L.id)) dist.set(a+'|'+L.id,0); });
+  while(Q.size){ let u=null,du=Infinity; Q.forEach(k=>{ if(dist.get(k)<du){du=dist.get(k);u=k;} }); if(u===null) break; Q.delete(u); (adj.get(u)||[]).forEach(([v,w])=>{ if(du+w<dist.get(v)){ dist.set(v,du+w); prev.set(v,u);} }); }
+  let best=null; stationLines(b).forEach(L=>{ const k=b+'|'+L.id; if(nodes.has(k)&&(!best||dist.get(k)<dist.get(best))) best=k; });
+  if(!best||!isFinite(dist.get(best))) return null;
+  const path=[]; for(let k=best;k;k=prev.get(k)) path.unshift(nodes.get(k));
+  const legs=[]; path.forEach(n=>{ const last=legs[legs.length-1]; if(last&&last.L===n.L){ if(last.st[last.st.length-1]!==n.st) last.st.push(n.st); } else { if(last&&last.st.length===1&&last.st[0]===n.st) last.L=n.L; else legs.push({L:n.L,st:[n.st]}); } });
+  return {legs:legs.filter(l=>l.st.length>1),total:dist.get(best)};
+}
+function renderRoute(res){
+  const box=document.getElementById('routeResult'); gRoute.innerHTML=''; routeLineIds=new Set(); routeStations=new Set();
+  if(!res){ box.innerHTML='<p style="color:var(--ink-3);font-size:12.5px">Nenhum trajeto encontrado com as linhas visíveis.</p>'; applyDim(); return; }
+  const trips=res.legs.length-1;
+  res.legs.forEach(l=>{ routeLineIds.add(l.L.id); l.st.forEach(s=>routeStations.add(s));
+    const pts=pathPoints(l.L,false); const i0=pts.findIndex(p=>p.st===l.st[0]), i1=pts.findIndex(p=>p.st===l.st[l.st.length-1]); const sub=pts.slice(Math.min(i0,i1),Math.max(i0,i1)+1);
+    const d=roundedPath(sub,90); el('path',{d,class:'route-path'},gRoute); const core=el('path',{d,class:'route-path core'},gRoute); core.style.stroke=l.L.css; });
+  box.innerHTML=`<div class="total">${Math.round(res.total/60)} min<small>${trips?trips+' baldeação'+(trips>1?'ões':''):'sem baldeação'} · tempo simulado</small></div>
+    <ul class="legs">${res.legs.map(l=>`<li class="leg"><i style="--c:${l.L.css}"></i><div><b>${nm(l.st[0])} → ${nm(l.st[l.st.length-1])}</b><span>${l.L.name} · sentido ${nm(l.L.st[l.L.st.indexOf(l.st[1])>l.L.st.indexOf(l.st[0])?l.L.st.length-1:0])} · ${l.st.length-1} ${l.st.length-1===1?'estação':'estações'}</span></div></li>`).join('')}</ul>`;
+  applyDim();
+}
+document.getElementById('routeForm').addEventListener('submit',e=>{ e.preventDefault(); if(fromSel.value===toSel.value){ renderRoute(null); return; } renderRoute(planRoute(fromSel.value,toSel.value)); });
+document.getElementById('clearRoute').onclick=()=>{ gRoute.innerHTML=''; routeLineIds=new Set(); routeStations=new Set(); document.getElementById('routeResult').innerHTML=''; applyDim(); };
+
+/* ================= LOOP ================= */
+const clockEl=document.getElementById('clock'), stTrains=document.getElementById('stTrains'), stPax=document.getElementById('stPax'), stHead=document.getElementById('stHead');
+let lastDetail=0,lastStats=0;
+function frame(){
+  const t=simNow();
+  LINES.forEach(L=>L.trainObjs.forEach(tr=>{ const s=trainState(tr,t); tr.el.setAttribute('transform',`translate(${s.x.toFixed(1)} ${s.y.toFixed(1)}) rotate(${s.ang.toFixed(1)})`); tr.el.style.display=(s.x>3010)?'none':''; }));
+  const now=performance.now();
+  if(now-lastDetail>700){ lastDetail=now; const c=simClock(); clockEl.textContent=`${c.h}:${c.m}:${c.ss}`; if(selected) renderDetail(); }
+  if(now-lastStats>2500){ lastStats=now; const c=simClock(); const dem=demandFactor(c.hour);
+    stTrains.textContent=LINES.filter(L=>!hiddenLines.has(L.id)).reduce((a,L)=>a+L.trains,0);
+    stPax.textContent=(Math.round((9000+dem*52000+(Math.random()-.5)*1500)/100)*100).toLocaleString('pt-BR');
+    const heads=LINES.filter(L=>!L.reg&&!hiddenLines.has(L.id)).map(L=>L.cycle/L.trains/60); stHead.textContent=heads.length?(heads.reduce((a,b)=>a+b,0)/heads.length).toFixed(1).replace('.',',')+' min':'—';
+    LINES.forEach(L=>L.trainObjs.forEach(tr=>{ tr.occ=Math.min(.98,Math.max(.08,tr.occ+(Math.random()-.5)*.08)); })); }
+  requestAnimationFrame(frame);
+}
+rollAlerts(); setInterval(rollAlerts,75000); requestAnimationFrame(frame);
+
+/* ================= UI ================= */
+const aside=document.getElementById('aside'); function openAside(){ aside.classList.add('open'); }
+document.getElementById('brandToggle').addEventListener('click',()=>{ if(window.innerWidth<=900) aside.classList.toggle('open'); });
+const about=document.getElementById('about');
+document.getElementById('aboutBtn').onclick=()=>{ about.hidden=false; document.getElementById('aboutClose').focus(); };
+document.getElementById('aboutClose').onclick=()=>about.hidden=true;
+about.addEventListener('click',e=>{ if(e.target===about) about.hidden=true; });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ about.hidden=true; select(null);} });
+</script>
+</body>
+</html>
